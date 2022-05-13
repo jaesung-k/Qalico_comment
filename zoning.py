@@ -76,6 +76,9 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
     q = gen.array(zones, nlocations) #gen.array(6, 100)
     print("q : \n{}".format(q))
 
+    q2 = np.ones((zones,nlocations))
+    print("q2 : \n{}".format(q2))
+
     # 無効グリッドを排除 
     # 비활성 그리드 배제
     invalid_grid = np.where(np.array(grid_shape.ravel()) == 0)[0]
@@ -94,7 +97,7 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
     cost_place_matrix = np.triu(cost_place_matrix + np.triu(cost_place_matrix.T, k=1))
     cost_place = ap.BinaryMatrix(cost_place_matrix)
     cost_place = cost_place.to_Poly() / ((nlocations * (zones-1)) ** 2) # 正規化
-
+    
     # 矩形化 
     # 직사각형화
     grid_n = np.arange(nlocations)

@@ -14,6 +14,8 @@ import numpy as np
 import time
 import itertools
 from pyomo.environ import *
+from numpy.polynomial import Polynomial as P
+
 
 def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_rooms_dict:dict, area_list:list, area_tolerance:float, grid_shape:np.ndarray, grid_size:float):
 
@@ -76,8 +78,21 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
     q = gen.array(zones, nlocations) #gen.array(6, 100)
     print("q : \n{}".format(q))
 
-    q2 = np.ones((zones,nlocations))
-    print("q2 : \n{}".format(q2))
+    gen2 = P(1)
+    print("gen2 : \n{}".format(gen2))
+
+    # 0513
+    # gen2 = np.arange(0, nlocations)
+    # print("gen2 : \n{}".format(gen2))    
+    # q2 = P(gen2)
+    # print("q2 : \n{}".format(q2))
+
+    #  gen2 = P(1)
+    #  print("gen2 : \n{}".format(gen2))    
+    #  q2 = gen2.__array_ufunc__(zones,nlocations)
+    #  q2 = np.ones((zones,nlocations))
+    #  print("q2 : \n{}".format(q2))
+
 
     # 無効グリッドを排除 
     # 비활성 그리드 배제
@@ -85,37 +100,57 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
     print("invalid_grids : \n{}".format(invalid_grid))
     for i in list(invalid_grid):
         q[zones-1][i] = ap.BinaryPoly(1) # q[5][i] = q_0, ap.BinarayPoly(1) = 1
-    print("invalid_grids : \n{}".format(ap.BinaryPoly(1)))
-
+    print("ap.BinaryPoly(1) : \n{}".format(ap.BinaryPoly(1)))
+    
+    # invalid_grid2 = np.where(np.array(grid_shape.ravel()) == 0)[0]
+    # for i in list(invalid_grid2):
+    #     q2[zones-1][i] = 1 # q[5][i] = q_0, ap.BinarayPoly(1) = 1
+    # print("q2 : \n{}".format(invalid_grid2))
+    
 
     # クラスター化・ゾーン配置 
     # 클러스터화·존 배치
     flo_dis = np.einsum("ik,jl->ijkl",flo_sum,distances) #np.einsum("ik,jl->ijkl",(5,5),(100,100))
     print("flo_dis shape : {}".format(flo_dis.shape)) #(5,100,5,100)
-    print("flo_dis : {}".format(flo_dis))
+    print("flo_dis : \n{}".format(flo_dis))
     cost_place_matrix = flo_dis.reshape(((zones-1) * nlocations, (zones-1) * nlocations)) #flo_dis.reshape(500,500)
     cost_place_matrix = np.triu(cost_place_matrix + np.triu(cost_place_matrix.T, k=1))
     cost_place = ap.BinaryMatrix(cost_place_matrix)
-    cost_place = cost_place.to_Poly() / ((nlocations * (zones-1)) ** 2) # 正規化
-    
+    cost_place = cost_place.to_Poly() / ((nlocations * (zones-1)) ** 2) # 正規化 정규화 cost_place.to_Poly()/(500**2)
+    #print("cost_place : {}".format(cost_place))
+
+    cost_place2 = np.matrix(cost_place_matrix)
+    cost_place2 = np.poly(cost_place2) / ((nlocations * (zones-1)) ** 2) # 正規化
+    #print("cost_place2 : {}".format(cost_place2))
+
     # 矩形化 
     # 직사각형화
     grid_n = np.arange(nlocations)
+    print("grid_n : \n{}".format(grid_n))
     grid_loc = grid_n.reshape([y_nlocations, x_nlocations])
+    print("grid_loc : \n{}".format(grid_loc))
     grid_loc_edge_x = [grid_loc[0][i] for i in range(x_nlocations-1)] + [grid_loc[-1][i] for i in range(x_nlocations-1)]
+    print("grid_loc_edge_x : \n{}".format(grid_loc_edge_x))
     grid_loc_edge_y = [grid_loc[i][0] for i in range(1, y_nlocations-1)] + [grid_loc[i][-1] for i in range(y_nlocations)]
+    print("grid_loc_edge_y : \n{}".format(grid_loc_edge_y))
     grid_loc_edge = grid_loc_edge_x + grid_loc_edge_y
+    print("grid_loc_edge : \n{}".format(grid_loc_edge))
     grid_n_t = np.reshape(grid_loc.T, [nlocations])
+    print("grid_n_t : \n{}".format(grid_n_t))
 
     cost_rec_row = ap.sum_poly(nlocations-y_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+y_nlocations]])) ** 2)))
+    #print("cost_rec_row : {}".format(cost_rec_row))
     cost_rec_column = ap.sum_poly(nlocations-x_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][i] + (-q[k][i+x_nlocations])) ** 2)))
     cost_rec_edge = ap.sum_poly((x_nlocations + y_nlocations -2) * 2, lambda i: ap.sum_poly(zones-1, lambda k: q[k][grid_loc_edge[i]]))
     cost_rec_edge = ap.sum_poly(grid_loc_edge, lambda i: ap.sum_poly(zones-1, lambda k: q[k][i]))
     cost_rec = (cost_rec_row + cost_rec_column + cost_rec_edge) / (nlocations*2 + x_nlocations + y_nlocations) # 正規化
 
+    #cost_rec_row2 = np.sum(nlocations-y_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+y_nlocations]])) ** 2)))
+
     # 方角配置 (grid_list[i][0]: y-axis, gird_list[i][1]: x-axis) 
     # 방향 배치
     cost_dire_sum = ap.BinaryPoly()
+    print("cost_dire_sum : {}".format(cost_dire_sum))
     dire_room_n = 0
     for direction, dire_rooms_list in dire_rooms_dict.items():
         if dire_rooms_list is None:
@@ -151,6 +186,7 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
         dire_room_n = 1
     print("dire_room_n : {}".format(dire_room_n))
     cost_dire_sum /= dire_room_n # 正規化
+    print("cost_dire_sum : {}".format(cost_dire_sum))
 
     # 面積制約 
     # 면적 제약
@@ -179,7 +215,8 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
             + coe_dict["cost_rec"] * cost_rec \
             + coe_dict["cost_dire_sum"] * cost_dire_sum \
             + constraints
-    
+
+"""    
     # client settings
     client = ap.client.FixstarsClient()
     client.token = "1bQRiJKq0PXWeQKUICyWgRjx3GOmgNL8"
@@ -228,14 +265,13 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
 
 
     return a
-
-
-
-
 """
-    model = AbstractModel()
-    model.x = Var(within=NonNegativeReals)
-    model.y = Var(bounds = (0, None))
-    model.z = Var()
-    model.c1 = Constraint(expr=model.b + 5*model.c <= model.a)
-"""
+
+
+
+
+    # model = AbstractModel()
+    # model.x = Var(within=NonNegativeReals)
+    # model.y = Var(bounds = (0, None))
+    # model.z = Var()
+    # model.c1 = Constraint(expr=model.b + 5*model.c <= model.a)

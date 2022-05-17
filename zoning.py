@@ -139,11 +139,15 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
     print("grid_n_t : \n{}".format(grid_n_t))
 
     cost_rec_row = ap.sum_poly(nlocations-y_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+y_nlocations]])) ** 2)))
-    #print("cost_rec_row : {}".format(cost_rec_row))
+    #cost_rec_row = ap.sum_poly(100-10, lambda i: ap.sum_poly(6, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+10]])) ** 2)))
+    print("cost_rec_row : {}".format(cost_rec_row))
     cost_rec_column = ap.sum_poly(nlocations-x_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][i] + (-q[k][i+x_nlocations])) ** 2)))
     cost_rec_edge = ap.sum_poly((x_nlocations + y_nlocations -2) * 2, lambda i: ap.sum_poly(zones-1, lambda k: q[k][grid_loc_edge[i]]))
+    #print("cost_rec_edge : {}".format(cost_rec_edge))
     cost_rec_edge = ap.sum_poly(grid_loc_edge, lambda i: ap.sum_poly(zones-1, lambda k: q[k][i]))
+    #print("cost_rec_edge2 : {}".format(cost_rec_edge))
     cost_rec = (cost_rec_row + cost_rec_column + cost_rec_edge) / (nlocations*2 + x_nlocations + y_nlocations) # 正規化
+    #print("cost_rec : {}".format(cost_rec))
 
     #cost_rec_row2 = np.sum(nlocations-y_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+y_nlocations]])) ** 2)))
 
@@ -186,7 +190,7 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
         dire_room_n = 1
     print("dire_room_n : {}".format(dire_room_n))
     cost_dire_sum /= dire_room_n # 正規化
-    print("cost_dire_sum : {}".format(cost_dire_sum))
+    #print("cost_dire_sum : {}".format(cost_dire_sum))
 
     # 面積制約 
     # 면적 제약

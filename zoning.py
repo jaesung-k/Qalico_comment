@@ -14,7 +14,6 @@ import numpy as np
 import time
 import itertools
 from pyomo.environ import *
-from numpy.polynomial import Polynomial as P
 
 
 def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_rooms_dict:dict, area_list:list, area_tolerance:float, grid_shape:np.ndarray, grid_size:float):
@@ -24,9 +23,9 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
     # construct flow matrix
     zones = flow_shape + 1
     flo = np.array(flow)
-    flo = np.triu(flo.reshape([flow_shape,flow_shape]), k=1)
-    flo_self = np.identity(flow_shape,  int)
-    flo_sum = (flo + flo.T + 100 * flo_self) / 100
+    flo = np.triu(flo.reshape([flow_shape,flow_shape]), k=1) #np.triu(flo.reshape([5,5], k=1)
+    flo_self = np.identity(flow_shape,  int) #단위행렬
+    flo_sum = (flo + flo.T + 100 * flo_self) / 100 #행렬 + 역행렬 + 100*단위행렬
 
     print("\n--------Setting Values in main process--------")
     print("zones : {}".format(zones))
@@ -67,86 +66,82 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
         return grid_list, distances, distances_ori
                     
     grid_list, distances, distances_ori = gen_locations(x_nlocations, y_nlocations)
-    print("grid_loc[10][0] : {}".format(grid_list.shape))
+    print("grid_list : {}".format(grid_list.shape))
     print("distances shape : {}".format(distances.shape))
     print("distances : \n{}".format(distances))
+    print("distances_ori : \n{}".format(distances_ori))
+
 
     # 変数配列の生成 
     # 변수 배열 생성
     gen = ap.SymbolGenerator(ap.BinaryPoly)
-    print("gen : \n{}".format(gen))
     q = gen.array(zones, nlocations) #gen.array(6, 100)
+    print("gen : \n{}".format(gen))
     print("q : \n{}".format(q))
-
-    gen2 = P(1)
-    print("gen2 : \n{}".format(gen2))
-
-    # 0513
-    # gen2 = np.arange(0, nlocations)
-    # print("gen2 : \n{}".format(gen2))    
-    # q2 = P(gen2)
-    # print("q2 : \n{}".format(q2))
-
-    #  gen2 = P(1)
-    #  print("gen2 : \n{}".format(gen2))    
-    #  q2 = gen2.__array_ufunc__(zones,nlocations)
-    #  q2 = np.ones((zones,nlocations))
-    #  print("q2 : \n{}".format(q2))
+    
+    # 0531
+    model = AbstractModel()
+    x = set(range(zones))
+    y = set(range(nlocations))
+    model.binMat = Var(x, y,domain=Binary)
 
 
     # 無効グリッドを排除 
     # 비활성 그리드 배제
     invalid_grid = np.where(np.array(grid_shape.ravel()) == 0)[0]
-    print("invalid_grids : \n{}".format(invalid_grid))
     for i in list(invalid_grid):
         q[zones-1][i] = ap.BinaryPoly(1) # q[5][i] = q_0, ap.BinarayPoly(1) = 1
-    print("ap.BinaryPoly(1) : \n{}".format(ap.BinaryPoly(1)))
+    # print("invalid_grids : \n{}".format(invalid_grid))
+    # print("ap.BinaryPoly(1) : \n{}".format(ap.BinaryPoly(1)))
     
-    # invalid_grid2 = np.where(np.array(grid_shape.ravel()) == 0)[0]
-    # for i in list(invalid_grid2):
-    #     q2[zones-1][i] = 1 # q[5][i] = q_0, ap.BinarayPoly(1) = 1
-    # print("q2 : \n{}".format(invalid_grid2))
-    
+    # 0531
+    # for i in list(invalid_grid):
+    #     model.binMat[zones-1][i] = 1
 
     # クラスター化・ゾーン配置 
     # 클러스터화·존 배치
     flo_dis = np.einsum("ik,jl->ijkl",flo_sum,distances) #np.einsum("ik,jl->ijkl",(5,5),(100,100))
-    print("flo_dis shape : {}".format(flo_dis.shape)) #(5,100,5,100)
-    print("flo_dis : \n{}".format(flo_dis))
     cost_place_matrix = flo_dis.reshape(((zones-1) * nlocations, (zones-1) * nlocations)) #flo_dis.reshape(500,500)
     cost_place_matrix = np.triu(cost_place_matrix + np.triu(cost_place_matrix.T, k=1))
     cost_place = ap.BinaryMatrix(cost_place_matrix)
     cost_place = cost_place.to_Poly() / ((nlocations * (zones-1)) ** 2) # 正規化 정규화 cost_place.to_Poly()/(500**2)
+    #print("flo_dis.shape : {}".format(flo_dis.shape)) #(5,100,5,100)
+    #print("flo_dis : \n{}".format(flo_dis))
+    #print("cost_place_matrix : {}".format(cost_place_matrix))
     #print("cost_place : {}".format(cost_place))
+    
+    #0531
+    # model2 = AbstractModel()
+    # cost_place2 = np.poly(cost_place_matrix)
+    model.cost_place2 = Var(np.zeros(cost_place_matrix).shape, domain=Binary)
 
-    cost_place2 = np.matrix(cost_place_matrix)
-    cost_place2 = np.poly(cost_place2) / ((nlocations * (zones-1)) ** 2) # 正規化
-    #print("cost_place2 : {}".format(cost_place2))
 
     # 矩形化 
     # 직사각형화
     grid_n = np.arange(nlocations)
-    print("grid_n : \n{}".format(grid_n))
     grid_loc = grid_n.reshape([y_nlocations, x_nlocations])
-    print("grid_loc : \n{}".format(grid_loc))
     grid_loc_edge_x = [grid_loc[0][i] for i in range(x_nlocations-1)] + [grid_loc[-1][i] for i in range(x_nlocations-1)]
-    print("grid_loc_edge_x : \n{}".format(grid_loc_edge_x))
     grid_loc_edge_y = [grid_loc[i][0] for i in range(1, y_nlocations-1)] + [grid_loc[i][-1] for i in range(y_nlocations)]
-    print("grid_loc_edge_y : \n{}".format(grid_loc_edge_y))
     grid_loc_edge = grid_loc_edge_x + grid_loc_edge_y
-    print("grid_loc_edge : \n{}".format(grid_loc_edge))
     grid_n_t = np.reshape(grid_loc.T, [nlocations])
-    print("grid_n_t : \n{}".format(grid_n_t))
+
+    # print("grid_n : \n{}".format(grid_n))
+    # print("grid_loc : \n{}".format(grid_loc))
+    # print("grid_loc_edge_x : \n{}".format(grid_loc_edge_x))
+    # print("grid_loc_edge_y : \n{}".format(grid_loc_edge_y))
+    # print("grid_loc_edge : \n{}".format(grid_loc_edge))
+    # print("grid_n_t : \n{}".format(grid_n_t))
 
     cost_rec_row = ap.sum_poly(nlocations-y_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+y_nlocations]])) ** 2)))
     #cost_rec_row = ap.sum_poly(100-10, lambda i: ap.sum_poly(6, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+10]])) ** 2)))
-    print("cost_rec_row : {}".format(cost_rec_row))
     cost_rec_column = ap.sum_poly(nlocations-x_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][i] + (-q[k][i+x_nlocations])) ** 2)))
     cost_rec_edge = ap.sum_poly((x_nlocations + y_nlocations -2) * 2, lambda i: ap.sum_poly(zones-1, lambda k: q[k][grid_loc_edge[i]]))
-    #print("cost_rec_edge : {}".format(cost_rec_edge))
     cost_rec_edge = ap.sum_poly(grid_loc_edge, lambda i: ap.sum_poly(zones-1, lambda k: q[k][i]))
-    #print("cost_rec_edge2 : {}".format(cost_rec_edge))
     cost_rec = (cost_rec_row + cost_rec_column + cost_rec_edge) / (nlocations*2 + x_nlocations + y_nlocations) # 正規化
+    
+    #print("cost_rec_row : {}".format(cost_rec_row))
+    #print("cost_rec_edge : {}".format(cost_rec_edge))
+    #print("cost_rec_edge2 : {}".format(cost_rec_edge))
     #print("cost_rec : {}".format(cost_rec))
 
     #cost_rec_row2 = np.sum(nlocations-y_nlocations, lambda i: ap.sum_poly(zones, lambda k: ((q[k][grid_n_t[i]] + (-q[k][grid_n_t[i+y_nlocations]])) ** 2)))
@@ -188,8 +183,8 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
             dire_room_n = 1
     if all([i == None for i in dire_rooms_dict.values()]):
         dire_room_n = 1
-    print("dire_room_n : {}".format(dire_room_n))
     cost_dire_sum /= dire_room_n # 正規化
+    #print("dire_room_n : {}".format(dire_room_n))
     #print("cost_dire_sum : {}".format(cost_dire_sum))
 
     # 面積制約 
@@ -198,10 +193,18 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
     for n in range(len(area_list)):
         diff_area = (area_list[n]/ga - ap.sum_poly([q[n][i] for i in range(nlocations)])) ** 2
         area_constraints += ap.constraint.penalty(diff_area, le = (area_list[n]/ga * area_tolerance/100) ** 2, label=f"penalty_area{n}")
-    
+    #print("diff_area : {}".format(diff_area))
+    #area_constraints : [(penalty_area0: 2 q_0 q_1 + 2 q_0 q_2 + 2 q_0 q_3
+    #- 61.5 q_496 - 61.5 q_497 - 61.5 q_498 - 61.5 q_499 + 976.562
+    #print("area_constraints : {}".format(area_constraints))
+    #[(penalty_area0: 2 q_0 q_1 + 2 q_0 q_2 + 2 q_0 q_3
+    #- 61.5 q_494 - 61.5 q_495 - 61.5 q_496 - 61.5 q_497 - 61.5 q_498 - 61.5 q_499 + 976.562 <= 9.76562, 1)]
+
     # 重複防止制約 
     # 중복 방지 제약
     zones_constraints = sum(ap.constraint.one_hot(q[:, n], label=f"one_hot_zone{n}") for n in range(nlocations)) / nlocations # 正規化
+    #print("zones_constraints : {}".format(zones_constraints))
+    #[(one_hot_zone0: q_0 + q_100 + q_200 + q_300 + q_400 + q_500 == 1, 0.01),
 
 
     # penalty coefficients scale adjustment
@@ -220,62 +223,54 @@ def opt(coe_dict:dict, x_grid:int, y_grid:int, flow_shape:int, flow:list, dire_r
             + coe_dict["cost_dire_sum"] * cost_dire_sum \
             + constraints
 
-"""    
-    # client settings
-    client = ap.client.FixstarsClient()
-    client.token = "1bQRiJKq0PXWeQKUICyWgRjx3GOmgNL8"
-    client.parameters.timeout = 20000    # タイムアウト10秒 타임 아웃 10초
+   
+    # # client settings
+    # client = ap.client.FixstarsClient()
+    # client.token = "1bQRiJKq0PXWeQKUICyWgRjx3GOmgNL8"
+    # client.parameters.timeout = 20000    # タイムアウト10秒 타임 아웃 10초
 
-    # solver
-    solver = ap.Solver(client)
+    # # solver
+    # solver = ap.Solver(client)
 
 
-    solver.filter_solution = True
-    result = solver.solve(model)
-    if len(result) == 0:
-        raise RuntimeError("Any one of constraints is not satisfied")
+    # solver.filter_solution = True
+    # result = solver.solve(model)
+    # if len(result) == 0:
+    #     raise RuntimeError("Any one of constraints is not satisfied")
 
-    # result
-    energy, values, is_feasible = result[0].energy, result[0].values, result[0].is_feasible
-    q_values = ap.decode_solution(q, values, 1)
-    q_values = np.array(q_values).transpose((1,0))
+    # # result
+    # energy, values, is_feasible = result[0].energy, result[0].values, result[0].is_feasible
+    # q_values = ap.decode_solution(q, values, 1)
+    # q_values = np.array(q_values).transpose((1,0))
 
-    print("\n--------result--------")
-    ans_grid = q_values[:, np.newaxis, :].reshape([y_nlocations, x_nlocations, zones]).transpose(2,0,1)
-    print("answer grid : \n{}".format(ans_grid))
-    print("answer grid shape : {}".format(ans_grid.shape))   # 各ゾーンごとのグリッド表現 각 구역별 그리드 표현
+    # print("\n--------result--------")
+    # ans_grid = q_values[:, np.newaxis, :].reshape([y_nlocations, x_nlocations, zones]).transpose(2,0,1)
+    # print("answer grid : \n{}".format(ans_grid))
+    # print("answer grid shape : {}".format(ans_grid.shape))   # 各ゾーンごとのグリッド表現 각 구역별 그리드 표현
 
-    route = np.where(np.array(q_values) == 1)[1]
-    routes_list = [np.where(np.array(route) == i)[0] for i in range(zones-1)]
+    # route = np.where(np.array(q_values) == 1)[1]
+    # routes_list = [np.where(np.array(route) == i)[0] for i in range(zones-1)]
 
-    # show result
-    for i in range(zones-1):
-        print("\n")
-        print("zone" + str(i))
-        print(routes_list[i])
-        print(len(routes_list[i]) * ga)
-    print("\n")
-    print(f"is_feasible : {is_feasible}")
-    # print(f"check_constraints : {model.check_constraints(values)}")
-    print(f"energy : {energy}")
+    # # show result
+    # for i in range(zones-1):
+    #     print("\n")
+    #     print("zone" + str(i))
+    #     print(routes_list[i])
+    #     print(len(routes_list[i]) * ga)
+    # print("\n")
+    # print(f"is_feasible : {is_feasible}")
+    # # print(f"check_constraints : {model.check_constraints(values)}")
+    # print(f"energy : {energy}")
  
-    t2 = time.time()    # 処理後時刻 처리 후 시각
-    elapsed_time = t2 -t1
-    print(f"経過時間 : {elapsed_time}")
+    # t2 = time.time()    # 処理後時刻 처리 후 시각
+    # elapsed_time = t2 -t1
+    # print(f"経過時間 : {elapsed_time}")
 
-    ans_list = [[int(n) for n in routes_list[i]] for i in range(len(routes_list))]
-    answer_list = [[str(i) + '-' + str(s) for s in ans_list[i]] for i in range(len(ans_list))]
-    a = list(itertools.chain.from_iterable(answer_list))
-
-
-    return a
-"""
+    # ans_list = [[int(n) for n in routes_list[i]] for i in range(len(routes_list))]
+    # answer_list = [[str(i) + '-' + str(s) for s in ans_list[i]] for i in range(len(ans_list))]
+    # a = list(itertools.chain.from_iterable(answer_list))
 
 
+    # return a
 
 
-    # model = AbstractModel()
-    # model.x = Var(within=NonNegativeReals)
-    # model.y = Var(bounds = (0, None))
-    # model.z = Var()
-    # model.c1 = Constraint(expr=model.b + 5*model.c <= model.a)
